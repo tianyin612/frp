@@ -1,5 +1,32 @@
 # Windows 构建实测记录（2026-10-28）
 
+## 结论更新（同日晚）
+
+本机仍然编译不了（见下文硬件/工具集问题），但**改走 CI 后已全部跑通**：
+
+| Job | 结果 | 产物 |
+| --- | --- | --- |
+| Windows x64 | ✅ success（2 分钟） | `windows-<sha>` 13.6 MB（msi + nsis exe） |
+| macOS aarch64 | ✅ success（5 分钟） | `macos-aarch64-apple-darwin-<sha>` 16.7 MB（dmg） |
+| macOS x86_64 | ✅ success（4.5 分钟） | `macos-x86_64-apple-darwin-<sha>` 18 MB（dmg） |
+
+运行页：<https://github.com/tianyin612/frp/actions/runs/40677905769>
+
+CI 上修掉的三个问题（本地无法复现，都是 CI 环境特有）：
+
+1. **`APPLE_SIGNING_IDENTITY` 被导出成空字符串**：GitHub 会把缺失的 secret 导出为 `""`，Tauri 于是执行 `codesign --sign ""`，报
+   `error: The specified item could not be found in the keychain`。
+   → 判定变量改用 `HAS_APPLE_CERT`，真正的 identity 只在签名步骤里注入。
+2. **Tauri 的 DMG 步骤依赖 AppleScript/Finder**，在 CI 上脆弱。
+   → 只构建 `.app`，DMG 用 `hdiutil` 自己打。
+3. **未签名的 arm64 `.app` 一启动就被 AMFI 杀掉**。
+   → 打包前 `codesign --force --deep --sign - --options runtime` ad-hoc 签一次（仍然过不了 Gatekeeper，但能手动打开运行）。
+
+另外，为了让匿名用户也能拿到失败原因，构建步骤失败时会把日志尾部写成 `::error::` 注释
+（GitHub Actions 的日志 API 需要鉴权，但 annotations 是公开可读的）。
+
+---
+
 结论：**这台机器当前无法产出可执行文件**。不是代码问题，是环境问题；证据和复现步骤都在下面。
 
 ## 一、已经验证通过的

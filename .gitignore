@@ -13,3 +13,4 @@ src-tauri/msvc-shim/
 scripts/_*.ps1
 screen*.png
 build-unsigned.log
+scripts/_*
