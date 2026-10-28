@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口默认能力：只需要内部 IPC，不开放 shell / fs 插件权限",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

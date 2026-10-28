@@ -1,0 +1,4 @@
+# pnpm 11 的构建脚本白名单（自动生成的占位符改成了实际值）
+# 不放开 esbuild 的 postinstall，vite 装出来的 esbuild 是空壳，dev/build 都会失败
+allowBuilds:
+  esbuild: true

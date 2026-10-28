@@ -1,0 +1,10 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/frpc-*
+!src-tauri/binaries/README.md
+src-tauri/icons/
+src-tauri/msvc-shim/
+.DS_Store
+*.log
