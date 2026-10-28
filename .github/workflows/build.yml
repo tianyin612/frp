@@ -1,9 +1,10 @@
 name: build
 
-# 默认产出「未签名」安装包，任何 push / 手动触发都能跑通。
-# 配好 Secrets 之后，同一套流程自动升级为「签名（+macOS 公证）」产物。
+# Default: unsigned artifacts, works on any push / manual dispatch.
+# If the optional secrets below are configured, the same workflow upgrades
+# itself to signed (and on macOS notarized) artifacts.
 #
-# 需要的 Secrets（可选，全为空则出未签名包）：
+# Optional secrets:
 #   APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY
 #   APPLE_ID / APPLE_TEAM_ID / APPLE_APP_PASSWORD
 #   WIN_CERT_PFX_BASE64 / WIN_CERT_PASSWORD
@@ -117,10 +118,14 @@ jobs:
             frp_platform: darwin_amd64
     env:
       TARGET: ${{ matrix.target }}
+      # Do NOT export APPLE_SIGNING_IDENTITY at job level. When the secret is
+      # missing, GitHub still exports it as an empty string and Tauri then runs
+      # `codesign --sign ""`, which fails with:
+      #   error: The specified item could not be found in the keychain.
+      HAS_APPLE_CERT: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -170,7 +175,7 @@ jobs:
         run: pnpm preflight
 
       - name: Import signing certificate
-        if: env.APPLE_SIGNING_IDENTITY != ''
+        if: env.HAS_APPLE_CERT == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -189,16 +194,19 @@ jobs:
           security find-identity -v -p codesigning
 
       - name: Build + sign + notarize
-        if: env.APPLE_SIGNING_IDENTITY != ''
+        if: env.HAS_APPLE_CERT == 'true'
+        env:
+          SIGN_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: pnpm release:mac
 
       - name: Build (unsigned)
-        if: env.APPLE_SIGNING_IDENTITY == ''
+        if: env.HAS_APPLE_CERT != 'true'
         shell: bash
         run: |
           set -o pipefail
-          # Only the .app bundle here: Tauri's DMG step drives Finder via AppleScript
-          # and is the most fragile part on CI. We build the DMG ourselves below.
+          # Build only the .app bundle. Tauri's DMG step drives Finder through
+          # AppleScript and is the most fragile part on CI; we build the DMG
+          # ourselves in the next step.
           if pnpm tauri build --target "$TARGET" --bundles app 2>&1 | tee build-unsigned.log; then
             exit 0
           fi
@@ -209,13 +217,15 @@ jobs:
           exit 1
 
       - name: Package DMG (unsigned)
-        if: env.APPLE_SIGNING_IDENTITY == ''
+        if: env.HAS_APPLE_CERT != 'true'
         shell: bash
         run: |
           set -euo pipefail
           APP=$(ls -d src-tauri/target/$TARGET/release/bundle/macos/*.app | head -1)
           echo "app: $APP"
-          codesign -dv --verbose=4 "$APP" 2>&1 | head -5 || true
+          # ad-hoc sign: an unsigned arm64 bundle is killed by AMFI on launch
+          codesign --force --deep --sign - --options runtime "$APP" || echo "adhoc sign failed (non-fatal)"
+          codesign -dv --verbose=4 "$APP" 2>&1 | head -6 || true
           mkdir -p dist-mac
           hdiutil create -volname frpc-desktop -srcfolder "$APP" -ov -format UDZO \
             "dist-mac/frpc-desktop_${TARGET}.dmg"
