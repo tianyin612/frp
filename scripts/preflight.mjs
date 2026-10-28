@@ -63,7 +63,11 @@ const triples = {
 };
 const currentTriple = triples[`${process.platform}-${process.arch}`];
 const binDir = path.join(ROOT, "src-tauri/binaries");
-const suffix = process.platform === "win32" ? ".exe" : "";
+
+// CI 里会交叉编译（arm64 runner 上出 x86_64 的 macOS 包），
+// 所以优先用 TARGET 环境变量，而不是信任 process.arch。
+const triple = process.env.TARGET || currentTriple;
+const suffix = triple && triple.includes("windows") ? ".exe" : "";
 
 const listed = fs.existsSync(binDir)
   ? fs.readdirSync(binDir).filter((f) => f.startsWith("frpc-"))
@@ -75,10 +79,10 @@ if (listed.length === 0) {
   ok(`已内置：${listed.join(", ")}`);
 }
 
-if (!currentTriple) {
+if (!triple) {
   warn(`未识别的平台 ${process.platform}/${process.arch}，跳过当前平台检查`);
 } else {
-  const expected = `frpc-${currentTriple}${suffix}`;
+  const expected = `frpc-${triple}${suffix}`;
   const p = path.join(binDir, expected);
   if (fs.existsSync(p)) {
     ok(`${expected}（${(fs.statSync(p).size / 1024 / 1024).toFixed(1)} MB）`);
@@ -95,7 +99,7 @@ if (!currentTriple) {
     }
   } else {
     bad(`缺少当前平台内核：src-tauri/binaries/${expected}`);
-    if (process.platform === "darwin" && process.arch === "arm64") {
+    if (process.platform === "darwin" && triple === "aarch64-apple-darwin") {
       console.log("      cp ../frp_0.52.3_darwin_arm64/frpc src-tauri/binaries/" + expected);
     }
   }
