@@ -8,3 +8,8 @@ src-tauri/icons/
 src-tauri/msvc-shim/
 .DS_Store
 *.log
+
+# temp automation helpers and screenshots
+scripts/_*.ps1
+screen*.png
+build-unsigned.log

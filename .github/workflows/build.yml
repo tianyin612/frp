@@ -194,13 +194,39 @@ jobs:
 
       - name: Build (unsigned)
         if: env.APPLE_SIGNING_IDENTITY == ''
-        run: pnpm tauri build --target "$TARGET"
+        shell: bash
+        run: |
+          set -o pipefail
+          # Only the .app bundle here: Tauri's DMG step drives Finder via AppleScript
+          # and is the most fragile part on CI. We build the DMG ourselves below.
+          if pnpm tauri build --target "$TARGET" --bundles app 2>&1 | tee build-unsigned.log; then
+            exit 0
+          fi
+          echo "--- build tail ---"
+          tail -n 40 build-unsigned.log
+          MSG=$(tail -n 40 build-unsigned.log | sed 's/%/%25/g' | tr -d '\r' | awk 'BEGIN{ORS=""} {if(NR>1) printf "%%0A"; print}')
+          echo "::error title=macos build failed::$MSG"
+          exit 1
+
+      - name: Package DMG (unsigned)
+        if: env.APPLE_SIGNING_IDENTITY == ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(ls -d src-tauri/target/$TARGET/release/bundle/macos/*.app | head -1)
+          echo "app: $APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | head -5 || true
+          mkdir -p dist-mac
+          hdiutil create -volname frpc-desktop -srcfolder "$APP" -ov -format UDZO \
+            "dist-mac/frpc-desktop_${TARGET}.dmg"
+          ls -la dist-mac
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.target }}-${{ github.sha }}
           path: |
+            dist-mac/*.dmg
             src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
             src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app
           if-no-files-found: error
