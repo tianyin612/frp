@@ -6,6 +6,7 @@ mod autostart;
 mod commands;
 mod config;
 mod model;
+mod selfheal;
 mod store;
 mod supervisor;
 mod tray;
@@ -137,6 +138,9 @@ fn main() {
             commands::export_bundle,
             commands::import_bundle,
             commands::fetch_subscription,
+            selfheal::frpc_health,
+            selfheal::download_frpc,
+            selfheal::add_defender_exclusion,
         ])
         .build(tauri::generate_context!())
         .expect("构建 frpc-desktop 失败")

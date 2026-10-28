@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "./api";
 import type {
+  FrpcHealth,
   FrpcInfo,
   LogLine,
   Profile,
@@ -847,6 +848,8 @@ export default function App() {
     "profiles"
   );
   const [frpc, setFrpc] = useState<FrpcInfo | null>(null);
+  const [health, setHealth] = useState<FrpcHealth | null>(null);
+  const [repairing, setRepairing] = useState(false);
   const { msg, show } = useToast();
 
   const refresh = useCallback(async () => {
@@ -863,6 +866,11 @@ export default function App() {
       .detectFrpc()
       .then(setFrpc)
       .catch((e) => show(String(e), "err"));
+    // 启动自检：内置 frpc 是否还在（被杀软删掉时要把用户从死局里捞出来）
+    void api
+      .frpcHealth()
+      .then(setHealth)
+      .catch(() => {});
   }, [refresh, show]);
 
   useEffect(() => {
@@ -1065,6 +1073,65 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {health && !health.ok && (
+        <div className="modal-mask">
+          <div className="modal">
+            <h3>缺少 frpc 内核</h3>
+            <p className="modal-lead">
+              内置的 <code>frpc.exe</code> 很可能被杀毒软件隔离了（frp 是内网穿透工具，容易被按类别误报）。
+              下面任选一种恢复方式即可。
+            </p>
+            <pre className="code">{health.hint}</pre>
+            <div className="row">
+              <button
+                className="primary"
+                disabled={repairing}
+                onClick={async () => {
+                  setRepairing(true);
+                  try {
+                    const m = await api.downloadFrpc();
+                    show(m, "ok");
+                    setHealth(await api.frpcHealth());
+                    setFrpc(await api.detectFrpc());
+                  } catch (e) {
+                    show(String(e), "err");
+                  } finally {
+                    setRepairing(false);
+                  }
+                }}
+              >
+                {repairing ? "下载中…" : "自动下载并恢复"}
+              </button>
+              <button
+                disabled={!health.appDir}
+                title={health.appDir ?? ""}
+                onClick={async () => {
+                  if (!health.appDir) return;
+                  try {
+                    show(await api.addDefenderExclusion(health.appDir), "ok");
+                  } catch (e) {
+                    show(String(e), "err");
+                  }
+                }}
+              >
+                Defender 一键加白
+              </button>
+              <button
+                onClick={() => {
+                  setTab("settings");
+                  setHealth(null);
+                }}
+              >
+                去设置填路径
+              </button>
+              <button className="ghost" onClick={() => setHealth(null)}>
+                稍后
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {msg && <div className={`toast ${msg.kind}`}>{msg.text}</div>}
     </div>

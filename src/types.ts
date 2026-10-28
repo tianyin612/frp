@@ -91,3 +91,12 @@ export interface FrpcInfo {
   version: string;
   builtin: boolean;
 }
+
+export interface FrpcHealth {
+  ok: boolean;
+  path?: string | null;
+  /** builtin | custom | missing */
+  source: string;
+  hint: string;
+  appDir?: string | null;
+}

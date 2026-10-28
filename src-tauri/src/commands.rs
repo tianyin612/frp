@@ -19,7 +19,7 @@ use crate::AppState;
 
 /* --------------------------------------------------------------- 工具函数 */
 
-fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map_err(|e| format!("获取应用数据目录失败：{e}"))
@@ -39,7 +39,7 @@ fn ensure_exec(p: &Path) {
 fn ensure_exec(_p: &Path) {}
 
 /// 解析 frpc 可执行文件：自定义路径 → 打包资源目录 → 可执行文件同目录 → 开发期 binaries/
-fn resolve_frpc(app: &AppHandle, settings: &AppSettings) -> Result<(PathBuf, bool), String> {
+pub(crate) fn resolve_frpc(app: &AppHandle, settings: &AppSettings) -> Result<(PathBuf, bool), String> {
     let exe_name = if cfg!(windows) { "frpc.exe" } else { "frpc" };
 
     if let Some(raw) = settings.frpc_path.as_ref().filter(|p| !p.trim().is_empty()) {

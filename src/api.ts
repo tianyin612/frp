@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  FrpcHealth,
   FrpcInfo,
   LogLine,
   Profile,
@@ -60,6 +61,10 @@ export const api = {
 
   // 内核
   detectFrpc: () => call<FrpcInfo>("detect_frpc"),
+  frpcHealth: () => call<FrpcHealth>("frpc_health"),
+  downloadFrpc: () => call<string>("download_frpc"),
+  addDefenderExclusion: (path: string) =>
+    call<string>("add_defender_exclusion", { path }),
 
   // 导入导出 / 订阅
   exportBundle: () => call<string>("export_bundle"),

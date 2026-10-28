@@ -204,3 +204,44 @@ td.mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
 }
 .toast.err { border-color: var(--err); }
 .toast.ok { border-color: var(--ok); }
+
+/* 自愈弹窗 */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal {
+  width: min(720px, 92vw);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  user-select: text;
+}
+.modal h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+.modal-lead {
+  color: var(--muted);
+  margin: 0 0 12px;
+  line-height: 1.6;
+}
+.modal .code {
+  max-height: 200px;
+  margin-bottom: 14px;
+  white-space: pre-wrap;
+}
+.modal code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
