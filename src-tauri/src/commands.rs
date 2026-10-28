@@ -81,7 +81,12 @@ fn resolve_frpc(app: &AppHandle, settings: &AppSettings) -> Result<(PathBuf, boo
         .collect::<Vec<_>>()
         .join("\n  ");
     Err(format!(
-        "找不到 frpc 内核。已尝试：\n  {tried}\n\n请把 frpc 放到 src-tauri/binaries/frpc-{triple}{suffix}，或在设置里指定路径。"
+        "找不到 frpc 内核 —— 内置的 frpc.exe 很可能已被杀毒软件隔离或删除（frp 是内网穿透工具，容易被按类别误报）。\n\n\
+         已尝试以下位置：\n  {tried}\n\n\
+         处理办法（任选其一）：\n\
+         1) 把杀毒软件的「信任区/白名单」加上安装目录（或整个 frpc-desktop 文件夹），然后重新运行安装包修复一次；\n\
+         2) 或自行下载 frpc.exe 放到任意位置，在「设置 → 自定义 frpc 路径」里指定它；\n\
+         3) 详见项目内 docs/AV-FALSE-POSITIVE.md。"
     ))
 }
 
