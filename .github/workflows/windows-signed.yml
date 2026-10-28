@@ -1,0 +1,174 @@
+name: windows-signed
+
+# SignPath 免费签名（开源项目）。只在 SIGNPATH_ENABLED=true 时运行，
+# 不影响默认的未签名构建（build.yml）。
+#
+# 签名顺序：先签 exe → 再打安装包 → 再签安装包。
+# 顺序反了的话，MSI 里嵌的仍是未签名 exe，用户看到的还是"未知发布者"。
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  FRP_VERSION: "0.52.3"
+  NODE_VERSION: "22"
+
+jobs:
+  sign:
+    name: Build + SignPath sign
+    if: vars.SIGNPATH_ENABLED == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Fetch frpc sidecar
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $v = $env:FRP_VERSION
+          $url = "https://github.com/fatedier/frp/releases/download/v$v/frp_${v}_windows_amd64.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\frp.zip"
+          Expand-Archive -Path "$env:TEMP\frp.zip" -DestinationPath "$env:TEMP\frp" -Force
+          New-Item -ItemType Directory -Force -Path "src-tauri\binaries" | Out-Null
+          Copy-Item "$env:TEMP\frp\frp_${v}_windows_amd64\frpc.exe" `
+            -Destination "src-tauri\binaries\frpc-x86_64-pc-windows-msvc.exe"
+
+      - name: Install deps
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Icons
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "src-tauri\icons\icon.ico")) { pnpm tauri icon ./logo.png }
+
+      - name: Preflight
+        run: pnpm preflight
+
+      # ---------------------------------------------------------- 1) 出 exe
+      - name: Build binaries (no bundle)
+        run: pnpm tauri build --no-bundle
+
+      - name: Stage binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path "sign-input-binaries" | Out-Null
+          Copy-Item "src-tauri\target\release\frpc-desktop.exe" "sign-input-binaries\"
+          if (Test-Path "src-tauri\target\release\frpc.exe") {
+            Copy-Item "src-tauri\target\release\frpc.exe" "sign-input-binaries\"
+          }
+          Compress-Archive -Path "sign-input-binaries\*" -DestinationPath "binaries.zip" -Force
+
+      - name: Upload unsigned binaries
+        id: upload-binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-unsigned
+          path: binaries.zip
+          if-no-files-found: error
+
+      # ------------------------------------------------- 2) 签 exe
+      - name: Sign binaries
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: binaries
+          github-artifact-id: ${{ steps.upload-binaries.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-binaries
+
+      - name: Put signed binaries back
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $found = Get-ChildItem -Path "signed-binaries" -Recurse -File |
+            Where-Object { $_.Name -eq "frpc-desktop.exe" -or $_.Name -eq "frpc.exe" }
+          if (-not $found) { throw "签名结果里没找到 exe，请检查 Artifact Configuration" }
+          $found | ForEach-Object {
+            Write-Host "restoring $($_.FullName)"
+            Copy-Item $_.FullName "src-tauri\target\release\" -Force
+          }
+          Get-AuthenticodeSignature "src-tauri\target\release\frpc-desktop.exe" |
+            Select-Object Status, @{n='Signer';e={$_.SignerCertificate.Subject}} | Format-List
+
+      # ------------------------------------------------- 3) 打安装包
+      - name: Bundle installers
+        run: pnpm tauri bundle
+
+      - name: Stage installers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path "sign-input-installers" | Out-Null
+          foreach ($dir in @("src-tauri\target\release\bundle\msi", "src-tauri\target\release\bundle\nsis")) {
+            if (Test-Path $dir) {
+              Get-ChildItem $dir -Include *.msi, *.exe -File -Recurse |
+                ForEach-Object { Copy-Item $_.FullName "sign-input-installers\" -Force }
+            }
+          }
+          if (-not (Get-ChildItem "sign-input-installers" -File)) { throw "没有生成安装包" }
+          Compress-Archive -Path "sign-input-installers\*" -DestinationPath "installers.zip" -Force
+
+      - name: Upload unsigned installers
+        id: upload-installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-unsigned
+          path: installers.zip
+          if-no-files-found: error
+
+      # ------------------------------------------------- 4) 签安装包
+      - name: Sign installers
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: installers
+          github-artifact-id: ${{ steps.upload-installers.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-installers
+
+      - name: Verify and upload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $files = Get-ChildItem -Path "signed-installers" -Recurse -File |
+            Where-Object { $_.Extension -in ".msi", ".exe" }
+          if (-not $files) { throw "签名结果里没找到安装包" }
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            Write-Host ("{0} -> {1} ({2})" -f $f.Name, $sig.Status, $sig.SignerCertificate.Subject)
+          }
+
+      - name: Upload signed installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-signed-${{ github.sha }}
+          path: signed-installers/**
+          if-no-files-found: error

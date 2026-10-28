@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  SignPath Artifact Configuration（参考）
+  用途：签名最终安装包（MSI / NSIS exe）。
+
+  注意：ZIP 里可能同时存在 MSI 和 NSIS，二者用不同元素；
+  若你的构建只产出其中一种，删掉另一段即可。
+  保存前请在 SignPath 后台 Validate。
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration">
+  <zip-file>
+    <msi-file path="*.msi">
+      <authenticode-sign />
+    </msi-file>
+    <pe-file path="*.exe">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

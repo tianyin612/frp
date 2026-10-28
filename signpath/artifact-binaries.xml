@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  SignPath Artifact Configuration（参考）
+  用途：签名「安装包里的两个 exe」，必须在打 MSI/NSIS 之前完成。
+
+  上传方式：actions/upload-artifact@v4 会把目录打成 ZIP，
+  所以根节点是 <zip-file>，内部路径相对于 ZIP 根。
+
+  注意：请先在 SignPath 后台用 "Validate" 校验通过再保存；
+  不同版本的元素名可能略有差异，以 https://docs.signpath.io/artifact-configuration 为准。
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration">
+  <zip-file>
+    <pe-file path="frpc-desktop.exe">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="frpc.exe">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
